@@ -1,4 +1,4 @@
-# ![microui-rx](https://github.com/colleagueriley/microui-rx/blob/main/logo.png?raw=true)
+# ![microui-rx](https://github.com/colleagueriley/microui-rx/blob/master/logo.png?raw=true)
 
 A *tiny*, portable, immediate-mode UI library written in ANSI C
 

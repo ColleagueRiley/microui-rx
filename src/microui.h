@@ -144,18 +144,22 @@ typedef struct { mu_i32 x, y; } mu_Vec2;
 typedef struct { mu_i32 x, y, w, h; } mu_Rect;
 typedef struct { mu_u8 r, g, b, a; } mu_Color;
 typedef struct { mu_Id id; mu_i32 last_update; } mu_PoolItem;
-typedef struct { char* data; size_t length; } mu_String;
+typedef struct { char *data; size_t length; size_t capacity; } mu_String;
+typedef struct { const char * const data; size_t length; } mu_StringView;
 
 #define mu_vec2(x, y) (mu_Vec2){(x), (y)}
 #define mu_rect(x, y, w, h) (mu_Rect){(x), (y), (w), (h)}
 #define mu_color(r, g, b, a) (mu_Color){(r), (g), (b), (a)}
-#define mu_String(str, length) (mu_String){ str, length }
+#define mu_stringView(str, length) (mu_StringView){ str, length }
+#define mu_stringViewLiteral(string_literal) (mu_StringView){ (string_literal), sizeof((string_literal)) }
+#define mu_stringViewFromString(string) (mu_StringView){ (string).data, (string).length }
+#define mu_string(str, length, capacity) (mu_String){ str, length, capacity }
 
 typedef struct { mu_i32 type, size; } mu_BaseCommand;
 typedef struct { mu_BaseCommand base; void *dst; } mu_JumpCommand;
 typedef struct { mu_BaseCommand base; mu_Rect rect; } mu_ClipCommand;
 typedef struct { mu_BaseCommand base; mu_Rect rect; mu_Color color; } mu_RectCommand;
-typedef struct { mu_BaseCommand base; mu_Font font; mu_Vec2 pos; mu_Color color; char str[1]; } mu_TextCommand;
+typedef struct { mu_BaseCommand base; mu_Font font; mu_Vec2 pos; mu_Color color; size_t length; char str[1]; } mu_TextCommand;
 typedef struct { mu_BaseCommand base; mu_Rect rect; mu_i32 id; mu_Color color; } mu_IconCommand;
 
 typedef union {
@@ -206,7 +210,7 @@ typedef struct {
 
 struct mu_Context {
   /* callbacks */
-  mu_i32 (*text_width)(mu_Font font, const char *str, mu_i32 len);
+  mu_i32 (*text_width)(mu_Font font, const mu_StringView* str);
   mu_i32 (*text_height)(mu_Font font);
   void (*draw_frame)(mu_Context *ctx, mu_Rect rect, mu_i32 colorid);
   /* core state */
@@ -223,6 +227,7 @@ struct mu_Context {
   mu_Container *next_hover_root;
   mu_Container *scroll_target;
   char number_edit_buf[MU_MAX_FMT];
+  mu_String number_edit_string;
   mu_Id number_edit;
   /* stacks */
   mu_stack(char, MU_COMMANDLIST_SIZE) command_list;
@@ -244,22 +249,23 @@ struct mu_Context {
   mu_i32 mouse_pressed;
   mu_i32 key_down;
   mu_i32 key_pressed;
-  char input_text[32];
+  char input_text_buf[32];
+  mu_String input_text;
 };
 
 MU_API void mu_init(mu_Context *ctx);
 MU_API void mu_begin(mu_Context *ctx);
 MU_API void mu_end(mu_Context *ctx);
 MU_API void mu_set_focus(mu_Context *ctx, mu_Id id);
-MU_API mu_Id mu_get_id(mu_Context *ctx, const void *data, mu_i32 size);
-MU_API void mu_push_id(mu_Context *ctx, const void *data, mu_i32 size);
+MU_API mu_Id mu_get_id(mu_Context *ctx, const mu_StringView* str);
+MU_API void mu_push_id(mu_Context *ctx, const mu_StringView* str);
 MU_API void mu_pop_id(mu_Context *ctx);
 MU_API void mu_push_clip_rect(mu_Context *ctx, mu_Rect rect);
 MU_API void mu_pop_clip_rect(mu_Context *ctx);
 MU_API void mu_get_clip_rect(mu_Context *ctx, mu_Rect* rect_output);
 MU_API mu_i32 mu_check_clip(mu_Context *ctx, mu_Rect r);
 MU_API mu_Container* mu_get_current_container(mu_Context *ctx);
-MU_API mu_Container* mu_get_container(mu_Context *ctx, const char *name);
+MU_API mu_Container* mu_get_container(mu_Context *ctx, const mu_StringView* str);
 MU_API void mu_bring_to_front(mu_Context *ctx, mu_Container *cnt);
 
 MU_API mu_i32 mu_pool_init(mu_Context *ctx, mu_PoolItem *items, mu_i32 len, mu_Id id);
@@ -272,14 +278,14 @@ MU_API void mu_input_mouseup(mu_Context *ctx, mu_i32 btn);
 MU_API void mu_input_scroll(mu_Context *ctx, mu_i32 x, mu_i32 y);
 MU_API void mu_input_keydown(mu_Context *ctx, mu_i32 key);
 MU_API void mu_input_keyup(mu_Context *ctx, mu_i32 key);
-MU_API void mu_input_text(mu_Context *ctx, const char *text);
+MU_API void mu_input_text(mu_Context *ctx, const mu_StringView* str);
 
 MU_API mu_Command* mu_push_command(mu_Context *ctx, mu_i32 type, mu_i32 size);
 MU_API mu_i32 mu_next_command(mu_Context *ctx, mu_Command **cmd);
 MU_API void mu_set_clip(mu_Context *ctx, mu_Rect rect);
 MU_API void mu_draw_rect(mu_Context *ctx, mu_Rect rect, mu_Color color);
 MU_API void mu_draw_box(mu_Context *ctx, mu_Rect rect, mu_Color color);
-MU_API void mu_draw_text(mu_Context *ctx, mu_Font font, const char *str, mu_i32 len, mu_Vec2 pos, mu_Color color);
+MU_API void mu_draw_text(mu_Context *ctx, mu_Font font, const mu_StringView* str, mu_Vec2 pos, mu_Color color);
 MU_API void mu_draw_icon(mu_Context *ctx, mu_i32 id, mu_Rect rect, mu_Color color);
 
 MU_API void mu_layout_row(mu_Context *ctx, mu_i32 items, const mu_i32 *widths, mu_i32 height);
@@ -292,12 +298,12 @@ MU_API void mu_layout_get_position(mu_Context* ctx, mu_Vec2* vec);
 MU_API void mu_layout_next(mu_Context *ctx, mu_Rect* rect_output);
 
 MU_API void mu_draw_control_frame(mu_Context *ctx, mu_Id id, mu_Rect rect, mu_i32 colorid, mu_i32 opt);
-MU_API void mu_draw_control_text(mu_Context *ctx, const char *str, mu_Rect rect, mu_i32 colorid, mu_i32 opt);
+MU_API void mu_draw_control_text(mu_Context *ctx, const mu_StringView* str, mu_Rect rect, mu_i32 colorid, mu_i32 opt);
 MU_API mu_i32 mu_mouse_over(mu_Context *ctx, mu_Rect rect);
 MU_API void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, mu_i32 opt);
 
 #define mu_button(ctx, label)             mu_button_ex(ctx, label, 0, MU_OPT_ALIGNCENTER)
-#define mu_textbox(ctx, buf, bufsz)       mu_textbox_ex(ctx, buf, bufsz, 0)
+#define mu_textbox(ctx, buf)       mu_textbox_ex(ctx, buf, 0)
 #define mu_slider(ctx, value, lo, hi)     mu_slider_ex(ctx, value, lo, hi, 0, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER)
 #define mu_number(ctx, value, step)       mu_number_ex(ctx, value, step, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER)
 #define mu_header(ctx, label)             mu_header_ex(ctx, label, 0)
@@ -305,23 +311,23 @@ MU_API void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, mu_i32 op
 #define mu_begin_window(ctx, title, rect) mu_begin_window_ex(ctx, title, rect, 0)
 #define mu_begin_panel(ctx, name)         mu_begin_panel_ex(ctx, name, 0)
 
-MU_API void mu_text(mu_Context *ctx, const char *text);
-MU_API void mu_label(mu_Context *ctx, const char *text);
-MU_API mu_i32 mu_button_ex(mu_Context *ctx, const char *label, mu_i32 icon, mu_i32 opt);
-MU_API mu_i32 mu_checkbox(mu_Context *ctx, const char *label, mu_i32 *state);
-MU_API mu_i32 mu_textbox_raw(mu_Context *ctx, char *buf, mu_i32 bufsz, mu_Id id, mu_Rect r, mu_i32 opt);
-MU_API mu_i32 mu_textbox_ex(mu_Context *ctx, char *buf, mu_i32 bufsz, mu_i32 opt);
+MU_API void mu_text(mu_Context *ctx, const mu_StringView *str);
+MU_API void mu_label(mu_Context *ctx, const mu_StringView *str);
+MU_API mu_i32 mu_button_ex(mu_Context *ctx, const mu_StringView *str, mu_i32 icon, mu_i32 opt);
+MU_API mu_i32 mu_checkbox(mu_Context *ctx,  const mu_StringView *str, mu_i32 *state);
+MU_API mu_i32 mu_textbox_raw(mu_Context *ctx, mu_String *str, mu_Id id, mu_Rect r, mu_i32 opt);
+MU_API mu_i32 mu_textbox_ex(mu_Context *ctx, mu_String *str, mu_i32 opt);
 MU_API mu_i32 mu_slider_ex(mu_Context *ctx, mu_Real *value, mu_Real low, mu_Real high, mu_Real step, const char *fmt, mu_i32 opt);
 MU_API mu_i32 mu_number_ex(mu_Context *ctx, mu_Real *value, mu_Real step, const char *fmt, mu_i32 opt);
-MU_API mu_i32 mu_header_ex(mu_Context *ctx, const char *label, mu_i32 opt);
-MU_API mu_i32 mu_begin_treenode_ex(mu_Context *ctx, const char *label, mu_i32 opt);
+MU_API mu_i32 mu_header_ex(mu_Context *ctx, const mu_StringView *str, mu_i32 opt);
+MU_API mu_i32 mu_begin_treenode_ex(mu_Context *ctx, const mu_StringView *str, mu_i32 opt);
 MU_API void mu_end_treenode(mu_Context *ctx);
-MU_API mu_i32 mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, mu_i32 opt);
+MU_API mu_i32 mu_begin_window_ex(mu_Context *ctx, const mu_StringView *str, mu_Rect rect, mu_i32 opt);
 MU_API void mu_end_window(mu_Context *ctx);
-MU_API void mu_open_popup(mu_Context *ctx, const char *name);
-MU_API mu_i32 mu_begin_popup(mu_Context *ctx, const char *name);
+MU_API void mu_open_popup(mu_Context *ctx, const mu_StringView *str);
+MU_API mu_i32 mu_begin_popup(mu_Context *ctx, const mu_StringView *str);
 MU_API void mu_end_popup(mu_Context *ctx);
-MU_API void mu_begin_panel_ex(mu_Context *ctx, const char *name, mu_i32 opt);
+MU_API void mu_begin_panel_ex(mu_Context *ctx, const mu_StringView *str, mu_i32 opt);
 MU_API void mu_end_panel(mu_Context *ctx);
 
 #endif

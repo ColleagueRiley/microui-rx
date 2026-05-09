@@ -1,6 +1,6 @@
 # ![microui-rx](https://github.com/colleagueriley/microui-rx/blob/master/logo.png?raw=true)
 
-A *tiny*, portable, immediate-mode UI library written in ANSI C
+A fork of [microui](https://github.com/rxi/microui/), a *tiny*, portable, immediate-mode UI library written in ANSI C
 
 ## Features
 * Tiny codebase

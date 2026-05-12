@@ -50,6 +50,7 @@ jobs:
 
     - name: test C++
       run: |
+        cd demo
         make
         make clean
         make CC=g++
@@ -57,5 +58,5 @@ jobs:
 
     - name: test Zig
       run: |
-        make CC="zig cc" NO_VULKAN=1
+        cd demo && make CC="zig cc" NO_VULKAN=1
       if: matrix.bits == 64
